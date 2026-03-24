@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+.venv
+venv/
+*.egg-info/
+
+# macOS
+.DS_Store
+.AppleDouble
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo

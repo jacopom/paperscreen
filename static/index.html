@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PaperScreen</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: #fff;
+      color: #000;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    .hidden { display: none !important; }
+
+    /* ------------------------------------------------------------------ */
+    /* Editor (Mac)                                                         */
+    /* ------------------------------------------------------------------ */
+    #editor-view {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #f5f5f5;
+      border-bottom: 1px solid #ddd;
+      flex-shrink: 0;
+    }
+
+    .toolbar input[type="text"] {
+      width: 220px;
+      font-size: 13px;
+      font-family: 'Menlo', 'Monaco', monospace;
+      padding: 4px 8px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      background: #fff;
+    }
+
+    .toolbar button {
+      font-size: 13px;
+      padding: 4px 12px;
+      border: 1px solid #bbb;
+      border-radius: 3px;
+      background: #fff;
+      cursor: pointer;
+    }
+
+    .toolbar button:hover { background: #e8e8e8; }
+
+    .toolbar select {
+      font-size: 13px;
+      padding: 4px 6px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      max-width: 200px;
+      background: #fff;
+    }
+
+    #status {
+      font-size: 12px;
+      font-family: monospace;
+      color: #555;
+      margin-left: auto;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    /* Format bar (Mac) */
+    .format-bar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px 12px;
+      background: #efefef;
+      border-bottom: 1px solid #ddd;
+      flex-shrink: 0;
+    }
+
+    .format-bar button {
+      font-size: 12px;
+      padding: 3px 9px;
+      border: 1px solid #bbb;
+      border-radius: 3px;
+      background: #fff;
+      cursor: pointer;
+      min-width: 30px;
+    }
+
+    .format-bar button:hover { background: #e0e0e0; }
+    .format-bar button[data-fmt="bold"]   { font-weight: bold; }
+    .format-bar button[data-fmt="italic"] { font-style: italic; }
+    .format-bar button[data-fmt="code"]   { font-family: 'Menlo', 'Monaco', monospace; }
+
+    .format-sep {
+      width: 1px;
+      height: 16px;
+      background: #ccc;
+      margin: 0 3px;
+      flex-shrink: 0;
+    }
+
+    #editor-textarea {
+      flex: 1;
+      width: 100%;
+      padding: 20px 28px;
+      font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+      font-size: 15px;
+      line-height: 1.65;
+      border: none;
+      outline: none;
+      resize: none;
+      background: #fff;
+      color: #000;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Display (Kindle — e-ink optimised)                                   */
+    /* ------------------------------------------------------------------ */
+    #display-view {
+      padding: 28px 40px 60px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .display-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: 'Courier New', monospace;
+      font-size: 16px;
+      color: #333;
+      padding-bottom: 12px;
+      margin-bottom: 28px;
+      border-bottom: 2px solid #333;
+    }
+
+    #display-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ⌨ toggle — large enough for touch / e-ink */
+    #kbd-toggle {
+      font-size: 20px;
+      padding: 6px 16px;
+      border: 2px solid #333;
+      background: #fff;
+      cursor: pointer;
+      margin-left: 12px;
+      min-width: 48px;
+      min-height: 44px;
+      line-height: 1;
+    }
+
+    #kbd-toggle.active { background: #222; color: #fff; border-color: #222; }
+
+    #preview {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 22px;
+      line-height: 1.75;
+      color: #000;
+      cursor: text;
+    }
+
+    #preview h1 { font-size: 34px; font-weight: bold; margin: 0 0 24px; line-height: 1.3; }
+    #preview h2 { font-size: 28px; font-weight: bold; margin: 36px 0 16px; line-height: 1.3; }
+    #preview h3 { font-size: 24px; font-weight: bold; margin: 28px 0 12px; }
+    #preview p  { margin-bottom: 22px; }
+    #preview ul, #preview ol { margin: 0 0 22px 30px; }
+    #preview li { margin-bottom: 8px; }
+
+    #preview blockquote {
+      border-left: 3px solid #555;
+      margin: 0 0 22px;
+      padding: 4px 0 4px 18px;
+      color: #222;
+    }
+
+    #preview code {
+      font-family: 'Courier New', monospace;
+      font-size: 0.82em;
+      background: #eee;
+      padding: 2px 5px;
+    }
+
+    #preview pre {
+      background: #eee;
+      padding: 18px;
+      margin-bottom: 22px;
+      overflow-x: auto;
+      font-size: 0.8em;
+    }
+
+    #preview pre code { background: none; padding: 0; }
+    #preview hr      { border: none; border-top: 1px solid #aaa; margin: 32px 0; }
+    #preview strong  { font-weight: bold; }
+    #preview em      { font-style: italic; }
+
+    /* Cursor — thin vertical bar, no animation (e-ink safe) */
+    .cursor {
+      display: inline-block;
+      width: 2px;
+      height: 1.1em;
+      background: #000;
+      vertical-align: text-bottom;
+      margin: 0 1px;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Kindle edit overlay (full-screen, shown when ⌨ active)             */
+    /* ------------------------------------------------------------------ */
+    #kindle-edit {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      background: #fff;
+    }
+
+    #kindle-edit-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 12px;
+      border-bottom: 2px solid #333;
+      flex-wrap: wrap;
+      flex-shrink: 0;
+      background: #f5f5f5;
+    }
+
+    #kindle-edit-bar button {
+      font-size: 18px;
+      padding: 8px 14px;
+      border: 2px solid #333;
+      background: #fff;
+      min-width: 44px;
+      min-height: 44px;
+      line-height: 1;
+    }
+
+    #kindle-edit-bar button:active { background: #333; color: #fff; }
+
+    #kindle-edit-bar button[data-kfmt="bold"]   { font-weight: bold; }
+    #kindle-edit-bar button[data-kfmt="italic"] { font-style: italic; }
+    #kindle-edit-bar button[data-kfmt="code"]   { font-family: monospace; font-size: 16px; }
+
+    #kindle-edit-bar .kbd-sep {
+      width: 1px;
+      height: 32px;
+      background: #666;
+      margin: 0 3px;
+      flex-shrink: 0;
+    }
+
+    #kindle-edit-bar #kindle-close {
+      margin-left: auto;
+      font-size: 20px;
+      font-weight: bold;
+      border-color: #666;
+    }
+
+    #kindle-edit-textarea {
+      flex: 1;
+      width: 100%;
+      padding: 20px 28px;
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 22px;
+      line-height: 1.75;
+      border: none;
+      outline: none;
+      resize: none;
+      background: #fff;
+      color: #000;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Status dot                                                           */
+    /* ------------------------------------------------------------------ */
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    .dot-green  { background: #2a8a2a; }
+    .dot-yellow { background: #aa8800; }
+    .dot-red    { background: #cc2222; }
+  </style>
+</head>
+<body>
+
+<!-- -------------------------------------------------------------------- -->
+<!-- Editor view (Mac)                                                      -->
+<!-- -------------------------------------------------------------------- -->
+<div id="editor-view" class="hidden">
+  <div class="toolbar">
+    <input id="filename-input" type="text" placeholder="March 24th, 2026.md" spellcheck="false">
+    <button id="btn-new">New</button>
+    <button id="btn-save">Save</button>
+    <select id="file-select">
+      <option value="">— open file —</option>
+    </select>
+    <span id="status">
+      <span class="dot dot-yellow" id="status-dot"></span>
+      <span id="status-text">connecting…</span>
+    </span>
+  </div>
+  <div class="format-bar">
+    <button data-fmt="bold"   title="Bold (⌘B)">B</button>
+    <button data-fmt="italic" title="Italic (⌘I)">I</button>
+    <span class="format-sep"></span>
+    <button data-fmt="h1"    title="Heading 1">H1</button>
+    <button data-fmt="h2"    title="Heading 2">H2</button>
+    <span class="format-sep"></span>
+    <button data-fmt="code"  title="Code">code</button>
+    <button data-fmt="quote" title="Blockquote">❝</button>
+    <button data-fmt="list"  title="Bullet list">•</button>
+    <button data-fmt="hr"    title="Horizontal rule">—</button>
+  </div>
+  <textarea id="editor-textarea" spellcheck="false" placeholder="Start writing…"></textarea>
+</div>
+
+<!-- -------------------------------------------------------------------- -->
+<!-- Display view (Kindle)                                                  -->
+<!-- -------------------------------------------------------------------- -->
+<div id="display-view" class="hidden">
+  <div class="display-meta">
+    <span id="display-filename">—</span>
+    <span id="display-status">
+      <span class="dot dot-yellow" id="disp-dot"></span>
+      <span id="disp-text">connecting…</span>
+    </span>
+    <button id="kbd-toggle">⌨</button>
+  </div>
+  <div id="preview"></div>
+</div>
+
+<!-- Kindle full-screen edit overlay (hidden by default) -->
+<div id="kindle-edit" style="display:none">
+  <div id="kindle-edit-bar">
+    <button data-kfmt="bold">B</button>
+    <button data-kfmt="italic">I</button>
+    <span class="kbd-sep"></span>
+    <button data-kfmt="h1">H1</button>
+    <button data-kfmt="h2">H2</button>
+    <span class="kbd-sep"></span>
+    <button data-kfmt="code">code</button>
+    <button data-kfmt="quote">❝</button>
+    <button data-kfmt="list">•</button>
+    <button data-kfmt="hr">—</button>
+    <button id="kindle-save">Save</button>
+    <button id="kindle-close">✕</button>
+  </div>
+  <textarea id="kindle-edit-textarea" spellcheck="false" placeholder="Start writing…"></textarea>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // --- Mode & token from URL ---
+  var pathParts = location.pathname.replace(/^\//, '').replace(/\/$/, '').split('/');
+  var token = pathParts[0] || '';
+  var params = new URLSearchParams(location.search);
+  var roleParam = params.get('role');
+  var isEditor = roleParam === 'editor' || (!roleParam && location.hostname === 'localhost');
+
+  document.getElementById(isEditor ? 'editor-view' : 'display-view').classList.remove('hidden');
+
+  // --- WebSocket ---
+  var WS_PORT = __WS_PORT__;
+  var wsUrl = 'ws://' + location.hostname + ':' + WS_PORT + '/' + token + '/';
+  var ws = null;
+  var reconnectTimer = null;
+
+  // --- Timers ---
+  var syncTimer    = null;
+  var saveTimer    = null;
+  var displayTimer = null;
+  var lastSyncAt   = 0;
+
+  // --- DOM refs (editor) ---
+  var editorEl     = document.getElementById('editor-textarea');
+  var filenameEl   = document.getElementById('filename-input');
+  var statusDotEl  = document.getElementById('status-dot');
+  var statusTextEl = document.getElementById('status-text');
+  var fileSelectEl = document.getElementById('file-select');
+
+  // --- DOM refs (display) ---
+  var previewEl    = document.getElementById('preview');
+  var dispFilename = document.getElementById('display-filename');
+  var dispDot      = document.getElementById('disp-dot');
+  var dispText     = document.getElementById('disp-text');
+
+  // --- DOM refs (Kindle edit overlay) ---
+  var kindleEditEl = document.getElementById('kindle-edit');
+  var kindleTaEl   = document.getElementById('kindle-edit-textarea');
+
+  // --- Date filename ---
+  function dateFilename() {
+    var now = new Date();
+    var months = ['January','February','March','April','May','June',
+                  'July','August','September','October','November','December'];
+    var d = now.getDate();
+    var suffix = (d >= 11 && d <= 13) ? 'th'
+               : (['th','st','nd','rd'][d % 10 > 3 ? 0 : d % 10]);
+    return months[now.getMonth()] + ' ' + d + suffix + ', ' + now.getFullYear();
+  }
+
+  // --- Status ---
+  function setStatus(text, color) {
+    if (isEditor) {
+      statusDotEl.className = 'dot dot-' + color;
+      statusTextEl.textContent = text;
+    } else {
+      dispDot.className = 'dot dot-' + color;
+      dispText.textContent = text;
+    }
+  }
+
+  // --- Cursor marker (PUA — survives marked.js parsing intact) ---
+  var CURSOR_MARK = '\uE001';
+
+  function withCursor(text, pos) {
+    if (pos == null || pos < 0 || pos > text.length) return text;
+    return text.slice(0, pos) + CURSOR_MARK + text.slice(pos);
+  }
+
+  function renderMarkdown(text) {
+    var cursorSpan = '<span class="cursor"></span>';
+    if (typeof marked !== 'undefined') {
+      try {
+        return marked.parse(text || '').split(CURSOR_MARK).join(cursorSpan);
+      } catch (e) {}
+    }
+    var escaped = (text || '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return '<pre style="white-space:pre-wrap;font-size:20px">'
+         + escaped.split(CURSOR_MARK).join(cursorSpan) + '</pre>';
+  }
+
+  // --- Display update — skip if nothing changed ---
+  var lastDispContent = null;
+  var lastDispCursor  = -1;
+
+  function scheduleDisplay(content, filename, cursor) {
+    var c   = content || '';
+    var pos = cursor == null ? -1 : cursor;
+    if (c === lastDispContent && pos === lastDispCursor) return;
+    lastDispContent = c;
+    lastDispCursor  = pos;
+    clearTimeout(displayTimer);
+    displayTimer = setTimeout(function () {
+      dispFilename.textContent = filename || '—';
+      previewEl.innerHTML = renderMarkdown(withCursor(c, cursor));
+    }, 0);
+  }
+
+  // --- Send ---
+  function send(obj) {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+  }
+
+  // --- File list ---
+  function populateFileList(files) {
+    while (fileSelectEl.options.length > 1) fileSelectEl.remove(1);
+    files.forEach(function (name) {
+      var opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      fileSelectEl.appendChild(opt);
+    });
+  }
+
+  // --- WebSocket ---
+  function connect() {
+    if (ws) { try { ws.close(); } catch (e) {} }
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = function () {
+      setStatus('connected', 'green');
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    };
+
+    ws.onclose = function () {
+      setStatus('offline — retrying…', 'red');
+      reconnectTimer = setTimeout(connect, 3000);
+    };
+
+    ws.onerror = function () { setStatus('error', 'red'); };
+
+    ws.onmessage = function (event) {
+      var msg;
+      try { msg = JSON.parse(event.data); } catch (e) { return; }
+
+      if (msg.type === 'state') {
+        if (isEditor) {
+          if (document.activeElement !== editorEl) editorEl.value = msg.content || '';
+          filenameEl.value = msg.filename || '';
+          populateFileList(msg.files || []);
+        } else {
+          scheduleDisplay(msg.content, msg.filename, undefined);
+          if (document.activeElement !== kindleTaEl) kindleTaEl.value = msg.content || '';
+        }
+
+      } else if (msg.type === 'content') {
+        if (isEditor) {
+          if (document.activeElement !== editorEl) {
+            editorEl.value = msg.content || '';
+            filenameEl.value = msg.filename || '';
+          }
+        } else {
+          scheduleDisplay(msg.content, msg.filename, msg.cursor);
+          if (document.activeElement !== kindleTaEl) kindleTaEl.value = msg.content || '';
+        }
+
+      } else if (msg.type === 'saved') {
+        setStatus('saved ✓', 'green');
+
+      } else if (msg.type === 'files') {
+        if (isEditor) populateFileList(msg.files || []);
+      }
+    };
+  }
+
+  // --- WYSIWYG formatting (works on any textarea element) ---
+  function applyFormatTo(el, fmt) {
+    var start = el.selectionStart;
+    var end   = el.selectionEnd;
+    var val   = el.value;
+    var sel   = val.slice(start, end);
+    var replacement, newStart, newEnd;
+
+    switch (fmt) {
+      case 'bold':
+        replacement = '**' + (sel || 'bold text') + '**';
+        newStart = start + 2;
+        newEnd   = newStart + (sel || 'bold text').length;
+        break;
+
+      case 'italic':
+        replacement = '*' + (sel || 'italic text') + '*';
+        newStart = start + 1;
+        newEnd   = newStart + (sel || 'italic text').length;
+        break;
+
+      case 'code':
+        if (sel.indexOf('\n') !== -1) {
+          replacement = '```\n' + (sel || '') + '\n```';
+          newStart = start + 4;
+          newEnd   = newStart + (sel || '').length;
+        } else {
+          replacement = '`' + (sel || 'code') + '`';
+          newStart = start + 1;
+          newEnd   = newStart + (sel || 'code').length;
+        }
+        break;
+
+      case 'h1':    prependToLinesIn(el, '# ');  return;
+      case 'h2':    prependToLinesIn(el, '## '); return;
+      case 'quote': prependToLinesIn(el, '> ');  return;
+      case 'list':  prependToLinesIn(el, '- ');  return;
+
+      case 'hr':
+        var after = val.indexOf('\n', end);
+        if (after === -1) after = val.length;
+        var hr = '\n\n---\n\n';
+        el.setRangeText(hr, after, after);
+        el.selectionStart = el.selectionEnd = after + hr.length;
+        el.focus();
+        el.dispatchEvent(new Event('input'));
+        return;
+
+      default: return;
+    }
+
+    el.setRangeText(replacement, start, end);
+    el.selectionStart = newStart;
+    el.selectionEnd   = newEnd;
+    el.focus();
+    el.dispatchEvent(new Event('input'));
+  }
+
+  function prependToLinesIn(el, prefix) {
+    var start     = el.selectionStart;
+    var end       = el.selectionEnd;
+    var val       = el.value;
+    var lineStart = val.lastIndexOf('\n', start - 1) + 1;
+    var lineEnd   = val.indexOf('\n', end);
+    if (lineEnd === -1) lineEnd = val.length;
+
+    var replaced = val.slice(lineStart, lineEnd).split('\n')
+                      .map(function (l) { return prefix + l; }).join('\n');
+    el.setRangeText(replaced, lineStart, lineEnd);
+    el.selectionStart = lineStart;
+    el.selectionEnd   = lineStart + replaced.length;
+    el.focus();
+    el.dispatchEvent(new Event('input'));
+  }
+
+  function applyFormat(fmt) { applyFormatTo(editorEl, fmt); }
+
+  // --- Throttled content send (works for any textarea + filename) ---
+  function makeThrottledSend(getPayload) {
+    var last = 0;
+    var timer = null;
+    return function () {
+      var now = Date.now();
+      var elapsed = now - last;
+      clearTimeout(timer);
+      if (elapsed >= 30) {
+        last = now;
+        send(getPayload());
+      } else {
+        timer = setTimeout(function () {
+          last = Date.now();
+          send(getPayload());
+        }, 30 - elapsed);
+      }
+    };
+  }
+
+  // --- Kindle display side ---
+  if (!isEditor) {
+    var kbdToggleEl = document.getElementById('kbd-toggle');
+
+    // Touch tap on preview → map to markdown cursor position
+    previewEl.addEventListener('click', function (e) {
+      var range;
+      if (document.caretRangeFromPoint) {
+        range = document.caretRangeFromPoint(e.clientX, e.clientY);
+      } else if (document.caretPositionFromPoint) {
+        var cp = document.caretPositionFromPoint(e.clientX, e.clientY);
+        if (cp) { range = document.createRange(); range.setStart(cp.offsetNode, cp.offset); }
+      }
+      if (!range) return;
+
+      // Count plain-text chars in preview up to tap point
+      var pre = document.createRange();
+      pre.setStart(previewEl, 0);
+      pre.setEnd(range.startContainer, range.startOffset);
+      var renderOffset = pre.toString().replace(CURSOR_MARK, '').length;
+
+      // Map proportionally to markdown source position
+      var renderTotal = previewEl.textContent.replace(CURSOR_MARK, '').length;
+      var mdTotal     = (lastDispContent || '').length;
+      if (renderTotal === 0) return;
+      var mdPos = Math.round((renderOffset / renderTotal) * mdTotal);
+
+      lastDispCursor = mdPos;
+      send({ type: 'content', content: lastDispContent || '',
+             filename: dispFilename.textContent, cursor: mdPos });
+    });
+
+    // Open/close Kindle edit overlay
+    function openKindleEdit() {
+      kindleTaEl.value = lastDispContent || '';
+      var pos = lastDispCursor >= 0 ? lastDispCursor : (lastDispContent || '').length;
+      kindleEditEl.style.display = 'flex';
+      kbdToggleEl.classList.add('active');
+      // Defer focus so overlay is visible first, then keyboard pops up
+      setTimeout(function () {
+        kindleTaEl.focus();
+        kindleTaEl.selectionStart = kindleTaEl.selectionEnd = pos;
+      }, 50);
+    }
+
+    function closeKindleEdit() {
+      kindleEditEl.style.display = 'none';
+      kbdToggleEl.classList.remove('active');
+    }
+
+    kbdToggleEl.addEventListener('click', function () {
+      kindleEditEl.style.display === 'none' ? openKindleEdit() : closeKindleEdit();
+    });
+
+    document.getElementById('kindle-close').addEventListener('click', closeKindleEdit);
+
+    // Kindle textarea → throttled content sync
+    var sendKindle = makeThrottledSend(function () {
+      return { type: 'content', content: kindleTaEl.value,
+               filename: dispFilename.textContent,
+               cursor: kindleTaEl.selectionStart };
+    });
+
+    var kindleSaveTimer = null;
+    kindleTaEl.addEventListener('input', function () {
+      sendKindle();
+      setStatus('editing…', 'yellow');
+      clearTimeout(kindleSaveTimer);
+      kindleSaveTimer = setTimeout(function () {
+        var fn = dispFilename.textContent;
+        if (fn && fn !== '—') send({ type: 'save', filename: fn, content: kindleTaEl.value });
+      }, 2000);
+    });
+
+    document.getElementById('kindle-save').addEventListener('click', function () {
+      var fn = dispFilename.textContent;
+      if (fn && fn !== '—') {
+        clearTimeout(kindleSaveTimer);
+        send({ type: 'save', filename: fn, content: kindleTaEl.value });
+      }
+    });
+
+    // Format buttons in Kindle edit overlay
+    kindleEditEl.addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-kfmt]');
+      if (btn) applyFormatTo(kindleTaEl, btn.getAttribute('data-kfmt'));
+    });
+  }
+
+  // --- Mac editor side ---
+  if (isEditor) {
+    function doSave() {
+      var fn = filenameEl.value.trim() || dateFilename();
+      if (!fn.endsWith('.md')) fn += '.md';
+      filenameEl.value = fn;
+      send({ type: 'save', filename: fn, content: editorEl.value });
+      setStatus('saving…', 'yellow');
+    }
+
+    var sendContent = makeThrottledSend(function () {
+      return { type: 'content', content: editorEl.value,
+               filename: filenameEl.value, cursor: editorEl.selectionStart };
+    });
+
+    editorEl.addEventListener('input', function () {
+      sendContent();
+      clearTimeout(saveTimer);
+      setStatus('editing…', 'yellow');
+      saveTimer = setTimeout(doSave, 2000);
+    });
+
+    document.getElementById('btn-save').addEventListener('click', function () {
+      clearTimeout(saveTimer);
+      doSave();
+    });
+
+    document.getElementById('btn-new').addEventListener('click', function () {
+      var defaultName = dateFilename();
+      var fn = window.prompt('Filename (blank = today):', defaultName);
+      if (fn === null) return;
+      fn = (fn.trim() || defaultName);
+      if (!fn.endsWith('.md')) fn += '.md';
+      filenameEl.value = fn;
+      editorEl.value = '';
+      send({ type: 'new', filename: fn });
+      editorEl.focus();
+    });
+
+    fileSelectEl.addEventListener('change', function () {
+      if (this.value) { send({ type: 'load', filename: this.value }); this.value = ''; }
+    });
+
+    var formatBar = document.querySelector('.format-bar');
+    formatBar.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    formatBar.addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-fmt]');
+      if (btn) applyFormat(btn.getAttribute('data-fmt'));
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.metaKey || e.ctrlKey) {
+        if      (e.key === 's') { e.preventDefault(); clearTimeout(saveTimer); doSave(); }
+        else if (e.key === 'b') { e.preventDefault(); applyFormat('bold'); }
+        else if (e.key === 'i') { e.preventDefault(); applyFormat('italic'); }
+      }
+    });
+
+    editorEl.focus();
+  }
+
+  connect();
+}());
+</script>
+</body>
+</html>
