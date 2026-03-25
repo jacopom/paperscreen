@@ -383,8 +383,7 @@
   document.getElementById(isEditor ? 'editor-view' : 'display-view').classList.remove('hidden');
 
   // --- WebSocket ---
-  var WS_PORT = __WS_PORT__;
-  var wsUrl = 'ws://' + location.hostname + ':' + WS_PORT + '/' + token + '/';
+  var wsUrl = 'ws://' + location.hostname + ':' + location.port + '/' + token + '/';
   var ws = null;
   var reconnectTimer = null;
 
