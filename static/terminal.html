@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PaperScreen Terminal</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #fff;
+    color: #000;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 16px;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Header ─────────────────────────────────────────────── */
+  #header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+    border-bottom: 1px solid #000;
+    flex-shrink: 0;
+    font-size: 13px;
+    font-family: 'Courier New', Courier, monospace;
+  }
+
+  #status-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #ccc;
+    flex-shrink: 0;
+  }
+  #status-dot.connected  { background: #000; }
+  #status-dot.offline    { background: #888; }
+
+  #header-label { flex: 1; }
+
+  /* ── Terminal output ─────────────────────────────────────── */
+  #output-wrap {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 14px;
+  }
+
+  #output {
+    white-space: pre-wrap;
+    word-break: break-all;
+    line-height: 1.5;
+    font-size: 16px;
+    font-family: 'Courier New', Courier, monospace;
+    color: #000;
+  }
+
+  /* Kindle view: bigger text */
+  body.kindle #output {
+    font-size: 20px;
+    line-height: 1.65;
+  }
+
+  /* ── Input capture (Mac only) ────────────────────────────── */
+  #input-capture {
+    position: fixed;
+    top: -200px;
+    left: 0;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    resize: none;
+    border: none;
+    outline: none;
+    z-index: -1;
+  }
+
+  /* Mac focus hint */
+  #focus-hint {
+    display: none;
+    position: fixed;
+    bottom: 12px;
+    right: 14px;
+    background: #000;
+    color: #fff;
+    font-size: 12px;
+    padding: 4px 10px;
+    cursor: pointer;
+    user-select: none;
+    font-family: 'Courier New', Courier, monospace;
+  }
+  body.mac #focus-hint { display: block; }
+  #focus-hint.focused { background: #444; }
+
+  /* Exit indicator */
+  #exit-banner {
+    display: none;
+    text-align: center;
+    padding: 6px;
+    border-top: 1px solid #000;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  #exit-banner.visible { display: block; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div id="status-dot"></div>
+  <div id="header-label">terminal</div>
+</div>
+
+<div id="output-wrap">
+  <pre id="output"></pre>
+</div>
+
+<div id="exit-banner">— process exited —</div>
+
+<!-- Hidden textarea to capture keyboard input on Mac -->
+<textarea id="input-capture" autocomplete="off" autocorrect="off"
+          autocapitalize="none" spellcheck="false" aria-hidden="true"></textarea>
+
+<div id="focus-hint" title="Click to focus keyboard">[ click to type ]</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Role detection
+// ---------------------------------------------------------------------------
+const params = new URLSearchParams(location.search);
+const roleParam = params.get('role');
+const isMac    = roleParam === 'editor'  || (!roleParam && location.hostname === 'localhost');
+const isKindle = roleParam === 'display' || (!roleParam && location.hostname !== 'localhost');
+
+if (isMac)    document.body.classList.add('mac');
+if (isKindle) document.body.classList.add('kindle');
+
+// ---------------------------------------------------------------------------
+// WebSocket
+// ---------------------------------------------------------------------------
+const token     = location.pathname.split('/').filter(Boolean)[0] || '';
+const WS_PORT   = __WS_PORT__;
+const wsUrl     = `ws://${location.hostname}:${WS_PORT}/${token}/`;
+
+const outputEl  = document.getElementById('output');
+const wrapEl    = document.getElementById('output-wrap');
+const dotEl     = document.getElementById('status-dot');
+const exitEl    = document.getElementById('exit-banner');
+const hintEl    = document.getElementById('focus-hint');
+const captureEl = document.getElementById('input-capture');
+
+let ws           = null;
+let scrollLocked = false; // user scrolled up → stop auto-scroll
+
+function setStatus(state) {
+  dotEl.className = state; // 'connected' | 'offline'
+}
+
+function scrollBottom() {
+  if (!scrollLocked) {
+    wrapEl.scrollTop = wrapEl.scrollHeight;
+  }
+}
+
+// Detect manual scroll-up to lock auto-scroll
+wrapEl.addEventListener('scroll', () => {
+  const atBottom = wrapEl.scrollHeight - wrapEl.scrollTop - wrapEl.clientHeight < 40;
+  scrollLocked = !atBottom;
+});
+
+function connect() {
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    setStatus('connected');
+    if (isMac) sendResize();
+  };
+
+  ws.onclose = ws.onerror = () => {
+    setStatus('offline');
+    setTimeout(connect, 3000);
+  };
+
+  ws.onmessage = (e) => {
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+
+    if (msg.type === 'output') {
+      outputEl.textContent = msg.text;
+      scrollBottom();
+    } else if (msg.type === 'exit') {
+      exitEl.classList.add('visible');
+    }
+  };
+}
+
+connect();
+
+// ---------------------------------------------------------------------------
+// Mac — keyboard capture
+// ---------------------------------------------------------------------------
+if (isMac) {
+  // Focus the hidden textarea immediately and on click anywhere
+  function focusCapture() {
+    captureEl.focus();
+    hintEl.classList.add('focused');
+  }
+  document.addEventListener('click', focusCapture);
+  focusCapture();
+
+  captureEl.addEventListener('blur', () => hintEl.classList.remove('focused'));
+
+  // Map special keys → terminal escape sequences
+  const KEY_MAP = {
+    'ArrowUp':    '\x1b[A',
+    'ArrowDown':  '\x1b[B',
+    'ArrowRight': '\x1b[C',
+    'ArrowLeft':  '\x1b[D',
+    'Home':       '\x1b[H',
+    'End':        '\x1b[F',
+    'PageUp':     '\x1b[5~',
+    'PageDown':   '\x1b[6~',
+    'Delete':     '\x1b[3~',
+    'Insert':     '\x1b[2~',
+    'F1':  '\x1bOP', 'F2':  '\x1bOQ', 'F3':  '\x1bOR', 'F4':  '\x1bOS',
+    'F5':  '\x1b[15~', 'F6': '\x1b[17~', 'F7': '\x1b[18~',
+    'F8':  '\x1b[19~', 'F9': '\x1b[20~', 'F10': '\x1b[21~',
+    'F11': '\x1b[23~', 'F12': '\x1b[24~',
+    'Escape': '\x1b',
+  };
+
+  captureEl.addEventListener('keydown', (e) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    let data = null;
+
+    // Ctrl+key
+    if (e.ctrlKey && !e.altKey && !e.metaKey) {
+      const k = e.key.toUpperCase();
+      if (k.length === 1 && k >= 'A' && k <= 'Z') {
+        data = String.fromCharCode(k.charCodeAt(0) - 64); // Ctrl+A=\x01 … Ctrl+Z=\x1a
+      } else if (e.key === '[') { data = '\x1b'; }
+        else if (e.key === '\\') { data = '\x1c'; }
+        else if (e.key === ']') { data = '\x1d'; }
+        else if (e.key === '^') { data = '\x1e'; }
+        else if (e.key === '_') { data = '\x1f'; }
+    }
+
+    // Alt+key → ESC prefix
+    if (!data && e.altKey && !e.ctrlKey && !e.metaKey && e.key.length === 1) {
+      data = '\x1b' + e.key;
+    }
+
+    // Special keys
+    if (!data && KEY_MAP[e.key]) {
+      data = KEY_MAP[e.key];
+    }
+
+    // Tab, Enter, Backspace
+    if (!data) {
+      if (e.key === 'Tab')       { data = '\t'; }
+      else if (e.key === 'Enter')     { data = '\r'; }
+      else if (e.key === 'Backspace') { data = '\x7f'; }
+    }
+
+    if (data) {
+      e.preventDefault();
+      ws.send(JSON.stringify({ type: 'input', data }));
+      return;
+    }
+    // Printable chars fall through to 'input' event below
+  });
+
+  // Printable input (handles IME, dead keys, regular chars)
+  captureEl.addEventListener('input', () => {
+    const val = captureEl.value;
+    if (!val) return;
+    captureEl.value = '';
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'input', data: val }));
+    }
+  });
+
+  // Paste
+  captureEl.addEventListener('paste', (e) => {
+    e.preventDefault();
+    const text = e.clipboardData.getData('text');
+    if (text && ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'input', data: text }));
+    }
+  });
+
+  // Resize → notify server
+  function sendResize() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    // Estimate columns from window width and font metrics
+    const charWidth = 9.6; // ~Courier New 16px
+    const cols = Math.max(40, Math.floor(window.innerWidth / charWidth));
+    const charHeight = 24; // 16px * 1.5 line-height
+    const rows = Math.max(10, Math.floor(window.innerHeight / charHeight));
+    ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+  }
+
+  window.addEventListener('resize', sendResize);
+}
+</script>
+</body>
+</html>
